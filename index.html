@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>হাটিপাড়া নির্বাচন — অনলাইন ভোট</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6f9;font-family:Arial,"Noto Sans Bengali",sans-serif;color:#17202a}
+.wrap{max-width:520px;margin:auto;padding:20px 14px}.card{background:white;border-radius:20px;padding:22px;box-shadow:0 8px 30px #0001}
+h1{text-align:center;margin:0 0 6px}.sub{text-align:center;color:#667085;margin-bottom:20px}
+.opt{display:flex;gap:12px;align-items:center;border:2px solid #e4e7ec;border-radius:14px;padding:15px;margin:11px 0;cursor:pointer}
+.opt:has(input:checked){border-color:#1877f2;background:#f5f9ff}.opt input{width:20px;height:20px}.name{font-size:18px;font-weight:700}
+button{width:100%;border:0;border-radius:12px;padding:15px;background:#1877f2;color:#fff;font-size:18px;font-weight:700;margin-top:10px}
+button:disabled{opacity:.6}.msg{text-align:center;padding:12px;border-radius:10px;margin-top:14px;display:none}.ok{background:#ecfdf3;color:#027a48}.err{background:#fef3f2;color:#b42318}
+h2{font-size:20px;margin-bottom:12px}.result{border-top:1px solid #eaecf0;margin-top:22px;padding-top:18px}.top{display:flex;justify-content:space-between;font-weight:700}.bar{height:12px;background:#eaecf0;border-radius:20px;margin-top:6px;overflow:hidden}.fill{height:100%;background:#1877f2;width:0%;transition:.4s}.small{font-size:12px;color:#667085;line-height:1.5;text-align:center;margin-top:18px}
+</style>
+</head>
+<body><div class="wrap"><div class="card">
+<h1>🗳️ হাটিপাড়া অনলাইন ভোট</h1>
+<div class="sub">আপনার পছন্দের প্রার্থীকে একটি ভোট দিন</div>
+
+<label class="opt"><input type="radio" name="candidate" value="ajade"><span class="name">আজাদ মিয়া</span></label>
+<label class="opt"><input type="radio" name="candidate" value="rifat"><span class="name">রিফাত মিয়া</span></label>
+<label class="opt"><input type="radio" name="candidate" value="sanjidul"><span class="name">সানজিদুল ইসলাম শান্ত</span></label>
+
+<button id="vote" onclick="castVote()">ভোট দিন</button>
+<div id="ok" class="msg ok">✅ আপনার ভোট গ্রহণ করা হয়েছে।</div>
+<div id="err" class="msg err"></div>
+
+<div class="result"><h2>📊 বর্তমান ফলাফল</h2>
+<div class="row"><div class="top"><span>আজাদ মিয়া</span><span id="a">0</span></div><div class="bar"><div id="ab" class="fill"></div></div></div>
+<div class="row"><div class="top"><span>রিফাত মিয়া</span><span id="r">0</span></div><div class="bar"><div id="rb" class="fill"></div></div></div>
+<div class="row"><div class="top"><span>সানজিদুল ইসলাম শান্ত</span><span id="s">0</span></div><div class="bar"><div id="sb" class="fill"></div></div></div>
+<p class="small" id="total">মোট ভোট: 0</p></div>
+
+<div class="small">এই পেজে Supabase database ব্যবহার করা হয়েছে। নিচের SQL সেটআপ করার পর Messenger-এ লিংক শেয়ার করা যাবে।</div>
+</div></div>
+
+<script>
+const SUPABASE_URL = "PASTE_YOUR_SUPABASE_URL_HERE";
+const SUPABASE_ANON_KEY = "PASTE_YOUR_SUPABASE_ANON_KEY_HERE";
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const VOTER_KEY="hatipara_voter_token";
+function token(){
+  let t=localStorage.getItem(VOTER_KEY);
+  if(!t){t=crypto.randomUUID();localStorage.setItem(VOTER_KEY,t)}
+  return t;
+}
+function show(id,text){document.querySelectorAll(".msg").forEach(x=>x.style.display="none");if(text)document.getElementById(id).textContent=text;document.getElementById(id).style.display="block";}
+async function loadResults(){
+  const {data,error}=await client.rpc("vote_totals");
+  if(error)return;
+  const v={ajade:0,rifat:0,sanjidul:0};
+  (data||[]).forEach(x=>v[x.candidate]=Number(x.total));
+  const total=v.ajade+v.rifat+v.sanjidul;
+  [["a","ab",v.ajade],["r","rb",v.rifat],["s","sb",v.sanjidul]].forEach(([c,b,n])=>{
+    document.getElementById(c).textContent=n;
+    document.getElementById(b).style.width=(total?n/total*100:0)+"%";
+  });
+  document.getElementById("total").textContent="মোট ভোট: "+total;
+}
+async function castVote(){
+  const selected=document.querySelector('input[name="candidate"]:checked');
+  if(!selected){show("err","দয়া করে একজন প্রার্থী নির্বাচন করুন।");return}
+  const btn=document.getElementById("vote");btn.disabled=true;btn.textContent="ভোট গ্রহণ হচ্ছে...";
+  const {error}=await client.from("votes").insert({candidate:selected.value,voter_token:token()});
+  if(error){
+    if(error.code==="23505") show("err","আপনি ইতিমধ্যে ভোট দিয়েছেন।");
+    else show("err","ভোট দেওয়া যায়নি। কিছুক্ষণ পর আবার চেষ্টা করুন।");
+    btn.disabled=false;btn.textContent="ভোট দিন";return;
+  }
+  show("ok","✅ আপনার ভোট গ্রহণ করা হয়েছে।");
+  document.querySelectorAll('input[name="candidate"]').forEach(x=>x.disabled=true);
+  btn.textContent="ভোট দেওয়া হয়েছে";
+  await loadResults();
+}
+loadResults();
+setInterval(loadResults,15000);
+</script></body></html>
